@@ -1,5 +1,5 @@
 {
-    "model_path": "256x256_diffusion.pt",
+    "model_path": "./pre_trained/256x256_diffusion.pt",
     "attention_resolutions": "32,16,8",
     "class_cond": true,
     "diffusion_steps": 1000,

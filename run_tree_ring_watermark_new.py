@@ -4,6 +4,7 @@ import copy
 from tqdm import tqdm
 from statistics import mean, stdev
 from sklearn import metrics
+from torchvision.transforms.functional import to_tensor, to_pil_image
 
 import torch
 
@@ -28,7 +29,8 @@ def main(args):
     pipe = InversableStableDiffusionPipeline.from_pretrained(
         args.model_id,
         scheduler=scheduler,
-        dtype=torch.bfloat16
+        torch_dtype=torch.float16,
+        revision='fp16',
         )
     pipe = pipe.to(device)
 
@@ -97,11 +99,44 @@ def main(args):
         orig_image_w = outputs_w.images[0]
 
         ### test watermark
+        # embedding
+        scripted = torch.jit.load("syncmodel.jit.pt").to(device).eval()
+        orig_tensor_w = to_tensor(orig_image_w).unsqueeze(0).to(device)
+        with torch.no_grad():
+            emb = scripted.embed(orig_tensor_w)
+        orig_image_w_emb = to_pil_image(emb["imgs_w"].squeeze().cpu())
+
         # distortion
-        orig_image_no_w_auged, orig_image_w_auged = image_distortion(orig_image_no_w, orig_image_w, seed, args)
+        orig_image_no_w_auged, orig_image_w_auged_emb = image_distortion(orig_image_no_w, orig_image_w_emb, seed, args)
+        
+        # synchronization
+        orig_tensor_no_w_auged = to_tensor(orig_image_no_w_auged).unsqueeze(0).to(device)
+        with torch.no_grad():
+            det_no_w = scripted.detect(orig_tensor_no_w_auged)
+        pred_pts_no_w = det_no_w["preds_pts"]
+        orig_tensor_no_w_auged_sync = scripted.unwarp(orig_tensor_no_w_auged, pred_pts_no_w, original_size=orig_tensor_no_w_auged.shape[-2:])
+        orig_image_no_w_auged_sync = to_pil_image(orig_tensor_no_w_auged_sync.squeeze().cpu())
+
+        orig_tensor_w_auged_emb = to_tensor(orig_image_w_auged_emb).unsqueeze(0).to(device)
+        with torch.no_grad():
+            det_w = scripted.detect(orig_tensor_w_auged_emb)
+        pred_pts_w = det_w["preds_pts"]
+        orig_tensor_w_auged_sync = scripted.unwarp(orig_tensor_w_auged_emb, pred_pts_w, original_size=orig_tensor_w_auged_emb.shape[-2:])
+        orig_image_w_auged_sync = to_pil_image(orig_tensor_w_auged_sync.squeeze().cpu())
+
+        # save images
+        if i < 50:
+            os.makedirs(f"save/sd/{i}", exist_ok=True)
+            orig_image_no_w.save(f"save/sd/{i}/orig_no_w.png")
+            orig_image_w.save(f"save/sd/{i}/orig_w.png")
+            orig_image_no_w_auged.save(f"save/sd/{i}/orig_no_w_auged.png")
+            orig_image_no_w_auged_sync.save(f"save/sd/{i}/orig_no_w_auged_sync.png")
+            orig_image_w_emb.save(f"save/sd/{i}/orig_w_emb.png")
+            orig_image_w_auged_emb.save(f"save/sd/{i}/orig_w_auged_emb.png")
+            orig_image_w_auged_sync.save(f"save/sd/{i}/orig_w_auged_sync.png")
 
         # reverse img without watermarking
-        img_no_w = transform_img(orig_image_no_w_auged).unsqueeze(0).to(text_embeddings.dtype).to(device)
+        img_no_w = transform_img(orig_image_no_w_auged_sync).unsqueeze(0).to(text_embeddings.dtype).to(device)
         image_latents_no_w = pipe.get_image_latents(img_no_w, sample=False)
 
         reversed_latents_no_w = pipe.forward_diffusion(
@@ -112,7 +147,7 @@ def main(args):
         )
 
         # reverse img with watermarking
-        img_w = transform_img(orig_image_w_auged).unsqueeze(0).to(text_embeddings.dtype).to(device)
+        img_w = transform_img(orig_image_w_auged_sync).unsqueeze(0).to(text_embeddings.dtype).to(device)
         image_latents_w = pipe.get_image_latents(img_w, sample=False)
 
         reversed_latents_w = pipe.forward_diffusion(
@@ -126,7 +161,7 @@ def main(args):
         no_w_metric, w_metric = eval_watermark(reversed_latents_no_w, reversed_latents_w, watermarking_mask, gt_patch, args)
 
         if args.reference_model is not None:
-            sims = measure_similarity([orig_image_no_w, orig_image_w], current_prompt, ref_model, ref_clip_preprocess, ref_tokenizer, device)
+            sims = measure_similarity([orig_image_no_w, orig_image_w_emb], current_prompt, ref_model, ref_clip_preprocess, ref_tokenizer, device)
             w_no_sim = sims[0].item()
             w_sim = sims[1].item()
         else:
@@ -143,7 +178,7 @@ def main(args):
         if args.with_tracking:
             if (args.reference_model is not None) and (i < args.max_num_log_image):
                 # log images when we use reference_model
-                table.add_data(wandb.Image(orig_image_no_w), w_no_sim, wandb.Image(orig_image_w), w_sim, current_prompt, no_w_metric, w_metric)
+                table.add_data(wandb.Image(orig_image_no_w), w_no_sim, wandb.Image(orig_image_w_emb), w_sim, current_prompt, no_w_metric, w_metric)
             else:
                 table.add_data(None, w_no_sim, None, w_sim, current_prompt, no_w_metric, w_metric)
 
@@ -177,7 +212,7 @@ if __name__ == '__main__':
     parser.add_argument('--start', default=0, type=int)
     parser.add_argument('--end', default=10, type=int)
     parser.add_argument('--image_length', default=512, type=int)
-    parser.add_argument('--model_id', default='sd-research/stable-diffusion-2-1-base')
+    parser.add_argument('--model_id', default='stabilityai/stable-diffusion-2-1-base')
     parser.add_argument('--with_tracking', action='store_true')
     parser.add_argument('--num_images', default=1, type=int)
     parser.add_argument('--guidance_scale', default=7.5, type=float)

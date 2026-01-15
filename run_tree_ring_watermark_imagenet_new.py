@@ -4,6 +4,7 @@ import copy
 from tqdm import tqdm
 from statistics import mean, stdev
 from sklearn import metrics
+from torchvision.transforms.functional import to_tensor, to_pil_image
 
 import torch
 
@@ -96,14 +97,47 @@ def main(args):
         orig_image_w = outputs_w[0]
 
         ### test watermark
+        # embedding
+        scripted = torch.jit.load("syncmodel.jit.pt").to(device).eval()
+        orig_tensor_w = to_tensor(orig_image_w).unsqueeze(0).to(device)
+        with torch.no_grad():
+            emb = scripted.embed(orig_tensor_w)
+        orig_image_w_emb = to_pil_image(emb["imgs_w"].squeeze().cpu())
+
         # distortion
-        orig_image_no_w_auged, orig_image_w_auged = image_distortion(orig_image_no_w, orig_image_w, seed, args)
+        orig_image_no_w_auged, orig_image_w_auged_emb = image_distortion(orig_image_no_w, orig_image_w_emb, seed, args)
+        
+        # synchronization
+        orig_tensor_no_w_auged = to_tensor(orig_image_no_w_auged).unsqueeze(0).to(device)
+        with torch.no_grad():
+            det_no_w = scripted.detect(orig_tensor_no_w_auged)
+        pred_pts_no_w = det_no_w["preds_pts"]
+        orig_tensor_no_w_auged_sync = scripted.unwarp(orig_tensor_no_w_auged, pred_pts_no_w, original_size=orig_tensor_no_w_auged.shape[-2:])
+        orig_image_no_w_auged_sync = to_pil_image(orig_tensor_no_w_auged_sync.squeeze().cpu())
+
+        orig_tensor_w_auged_emb = to_tensor(orig_image_w_auged_emb).unsqueeze(0).to(device)
+        with torch.no_grad():
+            det_w = scripted.detect(orig_tensor_w_auged_emb)
+        pred_pts_w = det_w["preds_pts"]
+        orig_tensor_w_auged_sync = scripted.unwarp(orig_tensor_w_auged_emb, pred_pts_w, original_size=orig_tensor_w_auged_emb.shape[-2:])
+        orig_image_w_auged_sync = to_pil_image(orig_tensor_w_auged_sync.squeeze().cpu())
+
+        # save images
+        if i < 50:
+            os.makedirs(f"save/imagenet/{i}", exist_ok=True)
+            orig_image_no_w.save(f"save/imagenet/{i}/orig_no_w.png")
+            orig_image_w.save(f"save/imagenet/{i}/orig_w.png")
+            orig_image_no_w_auged.save(f"save/imagenet/{i}/orig_no_w_auged.png")
+            orig_image_no_w_auged_sync.save(f"save/imagenet/{i}/orig_no_w_auged_sync.png")
+            orig_image_w_emb.save(f"save/imagenet/{i}/orig_w_emb.png")
+            orig_image_w_auged_emb.save(f"save/imagenet/{i}/orig_w_auged_emb.png")
+            orig_image_w_auged_sync.save(f"save/imagenet/{i}/orig_w_auged_sync.png")
 
         # reverse img without watermarking
         reversed_latents_no_w = diffusion.ddim_reverse_sample_loop(
                 model=model,
                 shape=shape,
-                image=orig_image_no_w_auged,
+                image=orig_image_no_w_auged_sync,
                 model_kwargs=model_kwargs,
                 device=device,
             )
@@ -112,7 +146,7 @@ def main(args):
         reversed_latents_w = diffusion.ddim_reverse_sample_loop(
                 model=model,
                 shape=shape,
-                image=orig_image_w_auged,
+                image=orig_image_w_auged_sync,
                 model_kwargs=model_kwargs,
                 device=device,
             )
@@ -120,6 +154,7 @@ def main(args):
         # eval
         no_w_metric, w_metric = eval_watermark(reversed_latents_no_w, reversed_latents_w, watermarking_mask, gt_patch, args)
 
+        # TODO 下面评测部分尚未修改
         results.append({
             'no_w_metric': no_w_metric, 'w_metric': w_metric,
         })
@@ -130,7 +165,7 @@ def main(args):
         if args.with_tracking:
             if (args.reference_model is not None) and (i < args.max_num_log_image):
                 # log images when we use reference_model
-                table.add_data(wandb.Image(orig_image_no_w), wandb.Image(orig_image_w), no_w_metric, w_metric)
+                table.add_data(wandb.Image(orig_image_no_w), wandb.Image(orig_image_w_emb), no_w_metric, w_metric)
             else:
                 table.add_data(None, None, no_w_metric, w_metric)
 
@@ -149,6 +184,13 @@ def main(args):
         
     print(f'auc: {auc}, acc: {acc}, TPR@1%FPR: {low}')
 
+    with open("note.txt", "w+") as f:
+        for m in no_w_metrics:
+            f.write(f"{m:.2f} ")
+        f.write("\n")
+        for m in w_metrics:
+            f.write(f"{m:.2f} ")
+        f.write("\n")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='diffusion watermark')

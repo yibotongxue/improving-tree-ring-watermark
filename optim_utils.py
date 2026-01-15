@@ -188,13 +188,7 @@ def get_watermarking_pattern(pipe, args, device, shape=None):
             tmp_mask = torch.tensor(tmp_mask).to(device)
             
             for j in range(gt_patch.shape[1]):
-                # TODO 这里的操作是为了维持傅里叶矩阵的共轭对称性，简单先用循环实现
-                for k1 in range(tmp_mask.shape[0]):
-                    for k2 in range(tmp_mask.shape[1]):
-                        if tmp_mask[k1, k2]:
-                            gt_patch[:, j, k1, k2] = gt_patch_tmp[0, j, 0, i].item()
-                            gt_patch[:, j, -k1 - 1, -k2 - 1] = gt_patch_tmp[0, j, 0, i].item().conjugate()
-                            tmp_mask[-k1 - 1, -k2 - 1] = False
+                gt_patch[:, j, tmp_mask] = gt_patch_tmp[0, j, 0, i].item()
 
     return gt_patch
 
@@ -214,16 +208,14 @@ def inject_watermark(init_latents_w, watermarking_mask, gt_patch, args):
     return init_latents_w
 
 
-def eval_watermark(reversed_latents_no_w, reversed_latents_w, reversed_latents_w_sync, watermarking_mask, gt_patch, args):
+def eval_watermark(reversed_latents_no_w, reversed_latents_w, watermarking_mask, gt_patch, args):
     if 'complex' in args.w_measurement:
         reversed_latents_no_w_fft = torch.fft.fftshift(torch.fft.fft2(reversed_latents_no_w), dim=(-1, -2))
         reversed_latents_w_fft = torch.fft.fftshift(torch.fft.fft2(reversed_latents_w), dim=(-1, -2))
-        reversed_latents_w_sync_fft = torch.fft.fftshift(torch.fft.fft2(reversed_latents_w_sync), dim=(-1, -2))
         target_patch = gt_patch
     elif 'seed' in args.w_measurement:
         reversed_latents_no_w_fft = reversed_latents_no_w
         reversed_latents_w_fft = reversed_latents_w
-        reversed_latents_w_sync_fft = reversed_latents_w_sync
         target_patch = gt_patch
     else:
         NotImplementedError(f'w_measurement: {args.w_measurement}')
@@ -231,12 +223,10 @@ def eval_watermark(reversed_latents_no_w, reversed_latents_w, reversed_latents_w
     if 'l1' in args.w_measurement:
         no_w_metric = torch.abs(reversed_latents_no_w_fft[watermarking_mask] - target_patch[watermarking_mask]).mean().item()
         w_metric = torch.abs(reversed_latents_w_fft[watermarking_mask] - target_patch[watermarking_mask]).mean().item()
-        w_sync_metric = torch.abs(reversed_latents_w_sync_fft[watermarking_mask] - target_patch[watermarking_mask]).mean().item()
-        print(no_w_metric, w_metric, w_sync_metric)
     else:
         NotImplementedError(f'w_measurement: {args.w_measurement}')
 
-    return no_w_metric, w_metric, w_sync_metric
+    return no_w_metric, w_metric
 
 def get_p_value(reversed_latents_no_w, reversed_latents_w, watermarking_mask, gt_patch, args):
     # assume it's Fourier space wm
