@@ -21,7 +21,7 @@ class WamSync(BaseSync):
         self.device = device
 
         # NOTE: Make sure to download the model to syncpath
-        json_path = os.path.join("deps", "watermark_anything", "params.json")
+        json_path = os.path.join("params.json")
         ckpt_path = os.path.join(syncpath)
         self.wam = load_model_from_checkpoint(json_path, ckpt_path).to(device).eval()
         self.epsilon = 1
@@ -169,7 +169,7 @@ class WamSync(BaseSync):
         best_cuti = SZ // 2
         best_cutj = SZ // 2
         best_isflipped = False
-        for rotation in np.arange(-20, 21, 1):
+        for rotation in np.arange(-90, 91, 1):
             # use PIL to rotate
             wm_rot = self.rotate_wm(wm, rotation)
 

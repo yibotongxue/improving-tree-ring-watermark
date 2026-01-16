@@ -107,7 +107,8 @@ def main(args):
         # scripted = torch.jit.load("syncmodel.jit.pt").to(device).eval()
         orig_tensor_w = to_tensor(orig_image_w).unsqueeze(0).to(device)
         with torch.no_grad():
-            embedded_image = sync_model.add_sync(orig_tensor_w)
+            embedded_image = sync_model.add_sync(2.0 * orig_tensor_w - 1.0)
+            embedded_image = (embedded_image + 1.0) / 2.0
         orig_image_w_emb = to_pil_image(embedded_image.squeeze().cpu())
 
         # distortion
@@ -116,14 +117,17 @@ def main(args):
         # synchronization
         orig_tensor_no_w_auged = to_tensor(orig_image_no_w_auged).unsqueeze(0).to(device)
         with torch.no_grad():
-            orig_tensor_no_w_auged_sync = sync_model.remove_sync(orig_tensor_no_w_auged)
+            orig_tensor_no_w_auged_sync = sync_model.remove_sync(2.0 * orig_tensor_no_w_auged - 1.0)
+            orig_tensor_no_w_auged_sync = (orig_tensor_no_w_auged_sync + 1.0) / 2.0
+            # orig_tensor_no_w_auged_sync = orig_tensor_no_w_auged
         # pred_pts_no_w = det_no_w["preds_pts"]
         # orig_tensor_no_w_auged_sync = scripted.unwarp(orig_tensor_no_w_auged, pred_pts_no_w, original_size=orig_tensor_no_w_auged.shape[-2:])
         orig_image_no_w_auged_sync = to_pil_image(orig_tensor_no_w_auged_sync.squeeze().cpu())
 
         orig_tensor_w_auged_emb = to_tensor(orig_image_w_auged_emb).unsqueeze(0).to(device)
         with torch.no_grad():
-            orig_tensor_w_auged_sync = sync_model.remove_sync(orig_tensor_w_auged_emb)
+            orig_tensor_w_auged_sync = sync_model.remove_sync(2.0 * orig_tensor_w_auged_emb - 1.0)
+            orig_tensor_w_auged_sync = (orig_tensor_w_auged_sync + 1.0) / 2.0
         # pred_pts_w = det_w["preds_pts"]
         # orig_tensor_w_auged_sync = scripted.unwarp(orig_tensor_w_auged_emb, pred_pts_w, original_size=orig_tensor_w_auged_emb.shape[-2:])
         orig_image_w_auged_sync = to_pil_image(orig_tensor_w_auged_sync.squeeze().cpu())
