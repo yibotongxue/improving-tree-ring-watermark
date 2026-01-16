@@ -48,7 +48,7 @@ def main(args):
     shape = (args.bs, 3, args.image_size, args.image_size)
 
     no_w_dir = f"fid_outputs/{args.gt_data}/{args.run_name}/no_w_gen"
-    w_dir = f"fid_outputs/{args.gt_data}/{args.run_name}/w_gen"
+    w_dir = f"fid_outputs/{args.gt_data}/{args.run_name}/w_gen_{args.w_pattern}_new"
     os.makedirs(no_w_dir, exist_ok=True)
     os.makedirs(w_dir, exist_ok=True)
 
@@ -177,6 +177,8 @@ def main(args):
     if args.with_tracking:
         wandb.log({"Table": table})
         wandb.log({"fid_no_w": fid_value_no_w, "fid_w": fid_value_w})
+
+    print(f'fid_no_w: {fid_value_no_w}, fid_w: {fid_value_w}')
 
 
 if __name__ == "__main__":

@@ -53,6 +53,8 @@ def main(args):
     no_w_metrics = []
     w_metrics = []
 
+    save_dir = f"save/sd/{args.run_name}_{args.w_pattern}_new"
+
     for i in tqdm(range(args.start, args.end)):
         seed = i + args.gen_seed
         
@@ -125,14 +127,14 @@ def main(args):
 
         # save images
         if i < 50:
-            os.makedirs(f"save/sd/{i}", exist_ok=True)
-            orig_image_no_w.save(f"save/sd/{i}/orig_no_w.png")
-            orig_image_w.save(f"save/sd/{i}/orig_w.png")
-            orig_image_no_w_auged.save(f"save/sd/{i}/orig_no_w_auged.png")
-            orig_image_no_w_auged_sync.save(f"save/sd/{i}/orig_no_w_auged_sync.png")
-            orig_image_w_emb.save(f"save/sd/{i}/orig_w_emb.png")
-            orig_image_w_auged_emb.save(f"save/sd/{i}/orig_w_auged_emb.png")
-            orig_image_w_auged_sync.save(f"save/sd/{i}/orig_w_auged_sync.png")
+            os.makedirs(f"{save_dir}/{i}", exist_ok=True)
+            orig_image_no_w.save(f"{save_dir}/{i}/orig_no_w.png")
+            orig_image_w.save(f"{save_dir}/{i}/orig_w.png")
+            orig_image_no_w_auged.save(f"{save_dir}/{i}/orig_no_w_auged.png")
+            orig_image_no_w_auged_sync.save(f"{save_dir}/{i}/orig_no_w_auged_sync.png")
+            orig_image_w_emb.save(f"{save_dir}/{i}/orig_w_emb.png")
+            orig_image_w_auged_emb.save(f"{save_dir}/{i}/orig_w_auged_emb.png")
+            orig_image_w_auged_sync.save(f"{save_dir}/{i}/orig_w_auged_sync.png")
 
         # reverse img without watermarking
         img_no_w = transform_img(orig_image_no_w_auged_sync).unsqueeze(0).to(text_embeddings.dtype).to(device)

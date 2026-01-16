@@ -2,6 +2,7 @@ import argparse
 import wandb
 import copy
 from tqdm import tqdm
+from torchvision.transforms.functional import to_tensor, to_pil_image
 import json
 
 import torch
@@ -39,7 +40,7 @@ def main(args):
         prompt_key = 'caption'
     
     no_w_dir = f'fid_outputs/coco/{args.run_name}/no_w_gen'
-    w_dir = f'fid_outputs/coco/{args.run_name}/w_gen_{args.w_pattern}'
+    w_dir = f'fid_outputs/coco/{args.run_name}/w_gen_{args.w_pattern}_new'
     os.makedirs(no_w_dir, exist_ok=True)
     os.makedirs(w_dir, exist_ok=True)
 
@@ -93,6 +94,13 @@ def main(args):
             latents=init_latents_w,
             )
         orig_image_w = outputs_w.images[0]
+
+        # embedding
+        scripted = torch.jit.load("syncmodel.jit.pt").to(device).eval()
+        orig_tensor_w = to_tensor(orig_image_w).unsqueeze(0).to(device)
+        with torch.no_grad():
+            emb = scripted.embed(orig_tensor_w)
+        orig_image_w = to_pil_image(emb["imgs_w"].squeeze().cpu())
 
         if args.with_tracking:
             if i < args.max_num_log_image:
