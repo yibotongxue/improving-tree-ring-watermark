@@ -5,6 +5,7 @@ from tqdm import tqdm
 from statistics import mean, stdev
 from sklearn import metrics
 from torchvision.transforms.functional import to_tensor, to_pil_image
+from tree_ring_watermark.sync.factory import get_sync_model
 
 import torch
 
@@ -100,11 +101,14 @@ def main(args):
 
         ### test watermark
         # embedding
-        scripted = torch.jit.load("syncmodel.jit.pt").to(device).eval()
+        synctype = args.synctype
+        syncpath = args.syncpath
+        sync_model = get_sync_model(synctype, syncpath, device)
+        # scripted = torch.jit.load("syncmodel.jit.pt").to(device).eval()
         orig_tensor_w = to_tensor(orig_image_w).unsqueeze(0).to(device)
         with torch.no_grad():
-            emb = scripted.embed(orig_tensor_w)
-        orig_image_w_emb = to_pil_image(emb["imgs_w"].squeeze().cpu())
+            embedded_image = sync_model.add_sync(orig_tensor_w)
+        orig_image_w_emb = to_pil_image(embedded_image.squeeze().cpu())
 
         # distortion
         orig_image_no_w_auged, orig_image_w_auged_emb = image_distortion(orig_image_no_w, orig_image_w_emb, seed, args)
@@ -112,16 +116,16 @@ def main(args):
         # synchronization
         orig_tensor_no_w_auged = to_tensor(orig_image_no_w_auged).unsqueeze(0).to(device)
         with torch.no_grad():
-            det_no_w = scripted.detect(orig_tensor_no_w_auged)
-        pred_pts_no_w = det_no_w["preds_pts"]
-        orig_tensor_no_w_auged_sync = scripted.unwarp(orig_tensor_no_w_auged, pred_pts_no_w, original_size=orig_tensor_no_w_auged.shape[-2:])
+            orig_tensor_no_w_auged_sync = sync_model.remove_sync(orig_tensor_no_w_auged)
+        # pred_pts_no_w = det_no_w["preds_pts"]
+        # orig_tensor_no_w_auged_sync = scripted.unwarp(orig_tensor_no_w_auged, pred_pts_no_w, original_size=orig_tensor_no_w_auged.shape[-2:])
         orig_image_no_w_auged_sync = to_pil_image(orig_tensor_no_w_auged_sync.squeeze().cpu())
 
         orig_tensor_w_auged_emb = to_tensor(orig_image_w_auged_emb).unsqueeze(0).to(device)
         with torch.no_grad():
-            det_w = scripted.detect(orig_tensor_w_auged_emb)
-        pred_pts_w = det_w["preds_pts"]
-        orig_tensor_w_auged_sync = scripted.unwarp(orig_tensor_w_auged_emb, pred_pts_w, original_size=orig_tensor_w_auged_emb.shape[-2:])
+            orig_tensor_w_auged_sync = sync_model.remove_sync(orig_tensor_w_auged_emb)
+        # pred_pts_w = det_w["preds_pts"]
+        # orig_tensor_w_auged_sync = scripted.unwarp(orig_tensor_w_auged_emb, pred_pts_w, original_size=orig_tensor_w_auged_emb.shape[-2:])
         orig_image_w_auged_sync = to_pil_image(orig_tensor_w_auged_sync.squeeze().cpu())
 
         # save images
@@ -215,7 +219,11 @@ if __name__ == '__main__':
     parser.add_argument('--w_measurement', default='l1_complex')
     parser.add_argument('--w_injection', default='complex')
     parser.add_argument('--w_pattern_const', default=0, type=float)
-    
+
+    # sync model
+    parser.add_argument('--synctype', default='wam', type=str, help='sync model type')
+    parser.add_argument('--syncpath', required=True, type=str, help='path to sync model')
+
     # for image distortion
     parser.add_argument('--r_degree', default=None, type=float)
     parser.add_argument('--jpeg_ratio', default=None, type=int)
