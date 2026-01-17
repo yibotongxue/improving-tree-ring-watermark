@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export PYTHONPATH="./deps/wam"
+
 new=$1
 imagenet=$2
 pattern=$3
