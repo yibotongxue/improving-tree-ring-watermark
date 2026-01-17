@@ -5,7 +5,8 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 import torchvision.transforms.functional as TVF
-from loguru import logger
+# from loguru import logger
+import wandb
 from scipy import ndimage
 
 from .base import BaseSync
@@ -239,7 +240,7 @@ class WamSync(BaseSync):
         sizes = [torch.sum(positions == k).item() for k in centroids.keys()]
         if centroids is None or len(centroids) < 4:
             nb_centroids = 0 if centroids is None else len(centroids)
-            logger.warning(
+            wandb.warning(
                 f"idx={idx}: Found {nb_centroids} centroids after postprocessing, expected 4, returning dummy values"
             )
             return (0, origH // 2, origW // 2, False), (mask_preds_res, positions, centroids)
@@ -247,7 +248,7 @@ class WamSync(BaseSync):
         sum_size_thresh = round((origH * origW) * FACTOR)
         #print(f"Sum sizes: {sum(sizes)} vs {sum_size_thresh}")
         if sum(sizes) < sum_size_thresh:
-            logger.warning(
+            wandb.warning(
                 f"idx={idx}: Total size is {sum(sizes)}<{sum_size_thresh}; I am not confident enough in WAM, returning dummy values"
             )
             return (0, origH // 2, origW // 2, False), (mask_preds_res, positions, centroids)
@@ -326,7 +327,7 @@ class WamSync(BaseSync):
 
             angle, cuti, cutj, is_flipped = aug_info
             mask_preds_res, positions, centroids = wam_info
-            logger.info(
+            wandb.info(
                 f"{i}: {len(centroids)} messages found | Rot: {angle}, cuts: {cuti}, {cutj} (flip={is_flipped})"
             )
 
