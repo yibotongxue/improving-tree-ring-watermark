@@ -25,6 +25,19 @@ pip install -r requirements.txt
 
 ## 运行
 
+你可能需要下载子模块：
+
+```bash
+git submodule init
+git submodule update
+```
+
+创建链接
+
+```bash
+ln -s deps/wam/configs/ configs
+```
+
 下载模型
 
 ```bash
